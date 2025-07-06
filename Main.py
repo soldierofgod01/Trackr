@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands
+from discord import app_commands
 import requests
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -8,19 +8,26 @@ from io import BytesIO
 import datetime
 import os
 
-bot = commands.Bot(command_prefix="/", intents=discord.Intents.default())
+class MyClient(discord.Client):
+    def __init__(self):
+        super().__init__(intents=discord.Intents.default())
+        self.tree = app_commands.CommandTree(self)
 
-@bot.event
-async def on_ready():
-    print(f"Bot is live as {bot.user}")
+    async def on_ready(self):
+        print(f"Bot is live as {self.user}")
+        # Force sync to your server using its ID
+        await self.tree.sync(guild=discord.Object(id=1383877923911503896))
 
-@bot.command()
-async def price(ctx, coin: str):
-    await ctx.defer()
+client = MyClient()
+
+@client.tree.command(name="price", description="Get price chart of a coin", guild=discord.Object(id=1383877923911503896))
+@app_commands.describe(coin="The coin ID (like pepe, floki, eth)")
+async def price(interaction: discord.Interaction, coin: str):
+    await interaction.response.defer()
     r = requests.get(f"https://api.coingecko.com/api/v3/coins/{coin.lower()}/market_chart",
                      params={"vs_currency": "usd", "days": 1, "interval": "hourly"})
     if r.status_code != 200:
-        return await ctx.reply("❌ Invalid coin or error.")
+        return await interaction.followup.send("❌ Invalid coin or error.")
     data = r.json()
     df = pd.DataFrame(data['prices'], columns=['ts','price'])
     df['ts'] = pd.to_datetime(df['ts'], unit='ms')
@@ -46,6 +53,6 @@ async def price(ctx, coin: str):
         ), color=0x1ABC9C)
     embed.set_footer(text=f"Powered by CoinGecko • {datetime.datetime.utcnow():%Y-%m-%d %H:%M} UTC")
     embed.set_image(url="attachment://chart.png")
-    await ctx.reply(embed=embed, file=discord.File(buf, "chart.png"))
+    await interaction.followup.send(embed=embed, file=discord.File(buf, "chart.png"))
 
-bot.run(os.getenv("DISCORD_BOT_TOKEN"))
+client.run(os.getenv("DISCORD_BOT_TOKEN"))
