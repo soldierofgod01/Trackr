@@ -1,6 +1,5 @@
 discord.py
 requests
 pandas
-matplot
-lib
+matplotlib
 mplfinance
