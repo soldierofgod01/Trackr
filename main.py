@@ -1,4 +1,14 @@
-import os import discord from discord import app_commands from discord.ext import commands import requests import pandas as pd import matplotlib.pyplot as plt import mplfinance as mpf from io import BytesIO from datetime import datetime, timezone
+import os
+import discord
+from discord import app_commands
+from discord.ext import commands
+
+import requests
+import pandas as pd
+import matplotlib.pyplot as plt
+import mplfinance as mpf
+from io import BytesIO
+from datetime import datetime, timezone
 
 TOKEN = os.getenv("trackr") GUILD_ID = 1383877923911503896
 
