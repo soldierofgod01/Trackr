@@ -35,8 +35,11 @@ async def price(interaction: discord.Interaction, symbol: str):
     await interaction.response.defer()
 
     try:
+        print(f"📥 Received /price command for: {symbol}")
+
         coin_list = requests.get("https://api.coingecko.com/api/v3/coins/list").json()
         coin_id = next((coin["id"] for coin in coin_list if coin["symbol"] == symbol.lower()), None)
+        print(f"🔍 CoinGecko ID: {coin_id}")
 
         if not coin_id:
             await interaction.followup.send(f"❌ Couldn't find coin with symbol `{symbol}`.")
@@ -45,6 +48,7 @@ async def price(interaction: discord.Interaction, symbol: str):
         url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
         params = {"vs_currency": "usd", "days": "7", "interval": "hourly"}
         res = requests.get(url, params=params)
+        print(f"📊 API Status: {res.status_code}")
 
         if res.status_code != 200:
             await interaction.followup.send("❌ Failed to fetch price data.")
@@ -66,6 +70,7 @@ async def price(interaction: discord.Interaction, symbol: str):
         df["Low"] = df["Price"]
         df["Close"] = df["Price"]
         df = df[["Open", "High", "Low", "Close"]]
+        print(f"✅ DataFrame built: {df.shape[0]} rows")
 
         df["EMA20"] = df["Close"].ewm(span=20).mean()
         df["EMA50"] = df["Close"].ewm(span=50).mean()
@@ -83,7 +88,7 @@ async def price(interaction: discord.Interaction, symbol: str):
         await interaction.followup.send(file=file)
 
     except Exception as e:
-        print(f"❌ Error in /price: {e}")
+        print(f"❌ Exception in /price: {e}")
         await interaction.followup.send("❌ Something went wrong. Check logs.")
-        
+
 bot.run(TOKEN)
