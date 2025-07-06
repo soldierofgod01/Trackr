@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 import mplfinance as mpf
 from io import BytesIO
 from datetime import datetime, timezone
+TOKEN = os.getenv("trackr")
+GUILD_ID = 1383877923911503896
 
 TOKEN = os.getenv("trackr") GUILD_ID = 1383877923911503896
 
