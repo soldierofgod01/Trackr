@@ -3,11 +3,6 @@ from discord.ext import commands
 from discord import app_commands
 import os
 import requests
-import pandas as pd
-import mplfinance as mpf
-import matplotlib.pyplot as plt
-from io import BytesIO
-from datetime import datetime, timedelta
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 intents = discord.Intents.default()
@@ -22,11 +17,14 @@ async def on_ready():
     except Exception as e:
         print(f"❌ Sync failed: {e}")
 
-@bot.tree.command(name="price", description="Show candlestick chart of any coin (e.g. /price pepe)")
+@bot.tree.command(name="ping", description="Test if the bot works")
+async def ping(interaction: discord.Interaction):
+    await interaction.response.send_message("🏓 Pong! Bot is alive.")
+
+@bot.tree.command(name="price", description="Get live price of any coin (e.g. /price sol)")
 @app_commands.describe(symbol="Coin symbol like btc, eth, pepe")
 async def price(interaction: discord.Interaction, symbol: str):
     await interaction.response.defer()
-
     coin_list = requests.get("https://api.coingecko.com/api/v3/coins/list").json()
     coin_id = None
     symbol = symbol.lower()
@@ -40,41 +38,81 @@ async def price(interaction: discord.Interaction, symbol: str):
         await interaction.followup.send(f"❌ Couldn't find coin with symbol `{symbol}`")
         return
 
-    url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart?vs_currency=usd&days=7&interval=hourly"
-    data = requests.get(url).json()
+    url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin_id}&vs_currencies=usd"
+    response = requests.get(url).json()
+    price = response[coin_id]["usd"]
 
-    if "prices" not in data:
-        await interaction.followup.send("❌ Failed to fetch price data.")
+    await interaction.followup.send(f"💰 **{symbol.upper()}** is currently **${price}**")
+
+@bot.tree.command(name="info", description="Get live info on any coin (e.g. /info sol)")
+@app_commands.describe(symbol="Coin symbol like btc, eth, pepe")
+async def info(interaction: discord.Interaction, symbol: str):
+    await interaction.response.defer()
+    coin_list = requests.get("https://api.coingecko.com/api/v3/coins/list").json()
+    coin_id = None
+    symbol = symbol.lower()
+
+    for coin in coin_list:
+        if coin["symbol"] == symbol:
+            coin_id = coin["id"]
+            break
+
+    if not coin_id:
+        await interaction.followup.send(f"❌ Couldn't find coin with symbol `{symbol}`")
         return
 
-    df = pd.DataFrame(data["prices"], columns=["timestamp", "price"])
-    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
-    df.set_index("timestamp", inplace=True)
+    url = f"https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&ids={coin_id}"
+    data = requests.get(url).json()
 
-    df["open"] = df["price"].shift(1)
-    df["high"] = df["price"].rolling(2).max()
-    df["low"] = df["price"].rolling(2).min()
-    df["close"] = df["price"]
-    df = df.dropna()
-    df = df[["open", "high", "low", "close"]]
+    if not data:
+        await interaction.followup.send("❌ Failed to fetch coin info.")
+        return
 
-    df["EMA20"] = df["close"].ewm(span=20).mean()
-    df["EMA50"] = df["close"].ewm(span=50).mean()
+    coin = data[0]
+    name = coin["name"]
+    price = coin["current_price"]
+    market_cap = coin["market_cap"]
+    volume = coin["total_volume"]
+    high_24h = coin["high_24h"]
+    low_24h = coin["low_24h"]
+    change_24h = coin["price_change_percentage_24h"]
 
-    fig, ax = mpf.plot(
-        df,
-        type="candle",
-        style="yahoo",
-        mav=(20, 50),
-        volume=False,
-        returnfig=True,
-        title=f"{symbol.upper()} Price - 7D Hourly",
+    response = (
+        f"📊 **{name.upper()} ({symbol.upper()})**\n"
+        f"Price: ${price:,.2f}\n"
+        f"Market Cap: ${market_cap:,.0f}\n"
+        f"24h Volume: ${volume:,.0f}\n"
+        f"24h High: ${high_24h:,.2f}\n"
+        f"24h Low: ${low_24h:,.2f}\n"
+        f"24h Change: {change_24h:+.2f}%"
     )
 
-    buf = BytesIO()
-    fig.savefig(buf, format="png")
-    buf.seek(0)
-    file = discord.File(buf, filename="chart.png")
-    await interaction.followup.send(file=file)
+    await interaction.followup.send(response)
+
+@bot.tree.command(name="gainers", description="Top 5 crypto gainers in the last 24h")
+async def gainers(interaction: discord.Interaction):
+    await interaction.response.defer()
+    url = "https://api.coingecko.com/api/v3/coins/markets"
+    params = {"vs_currency": "usd", "order": "percent_change_24h_desc", "per_page": 5, "page": 1}
+    data = requests.get(url, params=params).json()
+
+    msg = "**🚀 Top 5 Gainers (24h):**\n"
+    for coin in data:
+        msg += f"• {coin['name']} ({coin['symbol'].upper()}): {coin['price_change_percentage_24h']:.2f}%\n"
+
+    await interaction.followup.send(msg)
+
+@bot.tree.command(name="trending", description="Top 7 trending coins searched on CoinGecko")
+async def trending(interaction: discord.Interaction):
+    await interaction.response.defer()
+    url = "https://api.coingecko.com/api/v3/search/trending"
+    data = requests.get(url).json()
+
+    msg = "**📈 Trending Coins:**\n"
+    for i, coin in enumerate(data["coins"], start=1):
+        item = coin["item"]
+        msg += f"{i}. {item['name']} ({item['symbol'].upper()})\n"
+
+    await interaction.followup.send(msg)
 
 bot.run(TOKEN)
