@@ -8,7 +8,7 @@ import mplfinance as mpf
 from io import BytesIO
 
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-GUILD_ID = 1383877923911503896  # your server ID
+GUILD_ID = 1383877923911503896  # Replace with your actual server ID
 
 intents = discord.Intents.default()
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -32,7 +32,7 @@ async def ping(interaction: discord.Interaction):
 @bot.tree.command(name="price", description="Get candlestick chart with EMAs for any coin")
 @app_commands.describe(symbol="Coin symbol (e.g. btc, eth, pepe)")
 async def price(interaction: discord.Interaction, symbol: str):
-    await interaction.response.defer()
+    await interaction.response.defer(thinking=True)
 
     try:
         print(f"📥 Received /price command for: {symbol}")
@@ -42,7 +42,7 @@ async def price(interaction: discord.Interaction, symbol: str):
         print(f"🔍 CoinGecko ID: {coin_id}")
 
         if not coin_id:
-            await interaction.followup.send(f"❌ Couldn't find coin with symbol `{symbol}`.")
+            await interaction.followup.send(f"❌ Couldn't find coin with symbol `{symbol}`.", ephemeral=True)
             return
 
         url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
@@ -51,12 +51,12 @@ async def price(interaction: discord.Interaction, symbol: str):
         print(f"📊 API Status: {res.status_code}")
 
         if res.status_code != 200:
-            await interaction.followup.send("❌ Failed to fetch price data.")
+            await interaction.followup.send("❌ Failed to fetch price data.", ephemeral=True)
             return
 
         prices = res.json().get("prices", [])
         if not prices:
-            await interaction.followup.send("❌ No price data available.")
+            await interaction.followup.send("❌ No price data available.", ephemeral=True)
             return
 
         import matplotlib
@@ -88,7 +88,8 @@ async def price(interaction: discord.Interaction, symbol: str):
         await interaction.followup.send(file=file)
 
     except Exception as e:
-        print(f"❌ Exception in /price: {e}")
-        await interaction.followup.send("❌ Something went wrong. Check logs.")
+        import traceback
+        print("❌ Exception in /price:\n", traceback.format_exc())
+        await interaction.followup.send("❌ Something went wrong. Check logs.", ephemeral=True)
 
 bot.run(TOKEN)
