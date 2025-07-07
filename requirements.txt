@@ -1,6 +1,2 @@
 discord.py
 requests
-pandas
-matplotlib
-mplfinance
-aiohttp
