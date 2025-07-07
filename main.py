@@ -1,51 +1,81 @@
-import os
 import discord
 from discord.ext import commands
 from discord import app_commands
-import aiohttp
+import os
+import requests
+import pandas as pd
+import mplfinance as mpf
+from io import BytesIO
 
-TOKEN = os.getenv("trackr")
+TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 GUILD_ID = 1383877923911503896
 
 intents = discord.Intents.default()
-bot = commands.Bot(command_prefix="/", intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    await bot.wait_until_ready()
+    print(f"✅ Logged in as {bot.user}")
     try:
-        synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
-        print(f"Synced {len(synced)} command(s).")
+        guild = discord.Object(id=GUILD_ID)
+        bot.tree.copy_global_to(guild=guild)
+        synced = await bot.tree.sync(guild=guild)
+        print(f"✅ Synced {len(synced)} commands to your server.")
     except Exception as e:
-        print(f"Failed to sync commands: {e}")
-    print(f"{bot.user} is online!")
+        print(f"❌ Sync failed: {e}")
 
-@bot.tree.command(name="ping", description="Check bot status", guild=discord.Object(id=GUILD_ID))
+@bot.tree.command(name="ping", description="Test if the bot is alive")
 async def ping(interaction: discord.Interaction):
     await interaction.response.send_message("🏓 Pong!")
 
-@bot.tree.command(name="price", description="Get current coin price", guild=discord.Object(id=GUILD_ID))
-@app_commands.describe(symbol="Enter the coin ID (e.g., bitcoin, ethereum)")
+@bot.tree.command(name="price", description="Get candlestick chart for any coin")
+@app_commands.describe(symbol="Coin symbol (e.g. btc, eth, pepe)")
 async def price(interaction: discord.Interaction, symbol: str):
-    await interaction.response.defer()
-    url = f"https://api.coingecko.com/api/v3/simple/price?ids={symbol.lower()}&vs_currencies=usd"
-    
+    await interaction.response.defer(thinking=True)
+    print("🔁 Step 1: Command received")
+
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
-                if resp.status != 200:
-                    await interaction.followup.send(f"❌ API Error: {resp.status}")
-                    return
+        coin_list = requests.get("https://api.coingecko.com/api/v3/coins/list").json()
+        coin_id = next((coin["id"] for coin in coin_list if coin["symbol"] == symbol.lower()), None)
+        print(f"🔁 Step 2: CoinGecko ID = {coin_id}")
 
-                data = await resp.json()
-                price = data.get(symbol.lower(), {}).get("usd")
+        if not coin_id:
+            await interaction.followup.send(f"❌ Couldn't find coin `{symbol}`.", ephemeral=True)
+            return
 
-                if price is None:
-                    await interaction.followup.send("❌ Coin not found. Please check the ID.")
-                else:
-                    await interaction.followup.send(f"💰 **{symbol.title()}**: ${price}")
+        url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
+        params = {"vs_currency": "usd", "days": "7", "interval": "hourly"}
+        res = requests.get(url, params=params)
+        prices = res.json().get("prices", [])
+        print(f"🔁 Step 3: Fetched {len(prices)} prices")
+
+        if not prices:
+            await interaction.followup.send("❌ No price data available.", ephemeral=True)
+            return
+
+        import matplotlib
+        matplotlib.use('Agg')
+
+        df = pd.DataFrame(prices, columns=["Timestamp", "Price"])
+        df["Date"] = pd.to_datetime(df["Timestamp"], unit="ms")
+        df.set_index("Date", inplace=True)
+        df["Open"] = df["Price"]
+        df["High"] = df["Price"]
+        df["Low"] = df["Price"]
+        df["Close"] = df["Price"]
+        df = df[["Open", "High", "Low", "Close"]]
+
+        buf = BytesIO()
+        mpf.plot(df, type="candle", style="charles", title=f"{symbol.upper()} (7D)", savefig=buf)
+        buf.seek(0)
+        print("✅ Step 4: Chart generated")
+
+        file = discord.File(buf, filename=f"{symbol}_chart.png")
+        await interaction.followup.send(file=file)
+
     except Exception as e:
-        await interaction.followup.send("⚠️ Something went wrong while fetching the price.")
-        print(f"Error in /price: {e}")
+        import traceback
+        print("❌ Error:\n", traceback.format_exc())
+        await interaction.followup.send("❌ Something went wrong.", ephemeral=True)
 
 bot.run(TOKEN)
