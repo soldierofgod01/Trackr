@@ -3,7 +3,9 @@ from discord.ext import commands
 from discord import app_commands
 import os
 import requests
-
+from dotenv import load_dotenv
+load_dotenv()
+TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 TOKEN = os.getenv("trackr")  # Make sure your Render secret key is set to 'trackr'
 GUILD_ID = 1383877923911503896
 
